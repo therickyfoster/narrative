@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Narrative Reframer — Standalone</title>
+<meta name="theme-color" content="#0b0f1a">
+<style>
+  /* ===== Minimal reset & tokens ===== */
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  :root{
+    --bg:#070a12; --bg2:#0e1730; --fg:#e6f1ff; --muted:#9bb3d1; --accent:#77f4d1;
+    --hud:#0c1324cc; --hud-border:#5c6fb3; --ok:#77f4d1; --warn:#ffda78; --bad:#ff6b6b;
+    --shadow:0 12px 40px rgba(0,0,0,.45);
+  }
+  body{
+    background:radial-gradient(1200px 800px at 50% 40%, var(--bg2) 0%, var(--bg) 60%, #05070c 100%);
+    color:var(--fg);
+    font: 500 16px/1.45 system-ui, -apple-system, Segoe UI, Inter, Roboto, sans-serif;
+    overflow:hidden
+  }
+  a{color:var(--accent);text-decoration:none}
+
+  /* ===== Cinematic Loader ===== */
+  .loader{
+    position:fixed; inset:0; display:grid; place-items:center; z-index:9;
+    background:linear-gradient(180deg, rgba(8,12,22,.98), rgba(6,9,16,.98));
+    opacity:0; transform:scale(1.02); transition: opacity .6s ease, transform .8s ease; pointer-events:none;
+  }
+  .loader.active{ opacity:1; transform:scale(1); pointer-events:auto}
+  .spinner{
+    width:min(30vmin,240px); aspect-ratio:1; border-radius:50%;
+    border:2px solid rgba(255,255,255,.08); position:relative; filter:drop-shadow(0 0 12px rgba(119,244,209,.35));
+    animation: spin 6s linear infinite;
+  }
+  .spinner::before,.spinner::after{content:""; position:absolute; inset:6%; border-radius:50%}
+  .spinner::before{ border:2px dashed rgba(119,244,209,.45); animation: spin 10s linear infinite reverse }
+  .spinner::after{ box-shadow:inset 0 0 80px 8px rgba(119,244,209,.12), 0 0 80px rgba(119,244,209,.12)}
+  .loader__text{ margin-top:1rem; letter-spacing:.12em; text-transform:uppercase; font-weight:700; color:var(--muted)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ===== Parallax starfield ===== */
+  #stars{position:fixed; inset:0; z-index:0}
+
+  /* ===== HUD ===== */
+  .hud{ position:fixed; inset:0; display:grid; grid-template-rows:auto 1fr auto; z-index:2; pointer-events:none}
+  .hud__top,.hud__bottom{display:flex;justify-content:space-between;align-items:center;padding:clamp(8px,2vmin,18px);pointer-events:auto}
+  .hud__top{ background:linear-gradient(180deg, rgba(10,14,25,.55), rgba(10,14,25,0)); border-bottom:1px solid rgba(92,111,179,.35)}
+  .hud__bottom{ background:linear-gradient(0deg, rgba(10,14,25,.55), rgba(10,14,25,0)); border-top:1px solid rgba(92,111,179,.35)}
+  .brand{ display:flex; gap:.8rem; align-items:center; font-weight:800; letter-spacing:.04em}
+  .dot{ width:.75rem; height:.75rem; border-radius:50%; background:var(--accent); box-shadow:0 0 24px rgba(119,244,209,.35)}
+  .tabs{ display:flex; gap:.5rem; flex-wrap:wrap}
+  .tab{ padding:.6rem .9rem; border:1px solid rgba(92,111,179,.45); border-radius:12px; background:var(--hud); backdrop-filter: blur(6px); cursor:pointer; user-select:none; transition: transform .12s ease, border-color .2s }
+  .tab:hover{ transform:translateY(-2px); border-color:var(--accent)}
+  .metrics{ display:flex; gap:.8rem; align-items:center}
+  .chip{ padding:.45rem .7rem; border:1px solid rgba(92,111,179,.45); border-radius:999px; background:var(--hud)}
+  .hash{max-width:48vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+  /* ===== Scene container ===== */
+  .scene{ position:absolute; inset:0; display:grid; place-items:center; z-index:1; padding:clamp(12px,3vmin,48px)}
+  .panel{
+    width:min(1200px, 92vw); min-height:min(72vh, 72dvh);
+    background:linear-gradient(180deg, rgba(14,20,38,.6), rgba(10,15,28,.55));
+    border:1px solid rgba(92,111,179,.45); border-radius:18px; backdrop-filter: blur(10px);
+    box-shadow: var(--shadow);
+    overflow:hidden; position:relative;
+  }
+  .panel__inner{ padding: clamp(12px, 2.4vmin, 28px); display:grid; gap:1.2rem}
+  .title{ font-size: clamp(22px, 3.2vmin, 38px); font-weight:900; letter-spacing:.02em}
+  .subtitle{ color:var(--muted)}
+  .grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap: clamp(10px, 2vmin, 20px); margin-top:.6rem}
+  .card{
+    border:1px solid rgba(92,111,179,.45); border-radius:16px; padding:1rem; background:linear-gradient(180deg, rgba(12,18,34,.6), rgba(10,15,28,.45));
+    transition: transform .18s ease, border-color .2s; cursor:pointer; user-select:none
+  }
+  .card:hover{ transform:translateY(-4px); border-color:var(--accent)}
+  .card h3{ font-size:1rem; margin-bottom:.25rem}
+  .card p{ font-size:.9rem; color:var(--muted)}
+
+  /* ===== Avatar forge ===== */
+  .forge{
+    position:fixed; right:16px; top:72px; z-index:3; width:min(420px, 92vw);
+    border:1px solid rgba(92,111,179,.45); border-radius:14px; background:var(--hud); backdrop-filter: blur(8px);
+    box-shadow: var(--shadow); padding:.8rem; display:none; gap:.6rem;
+  }
+  .forge.open{display:grid}
+  .forge h3{font-size:1rem}
+  .forge__row{display:flex; gap:.6rem; align-items:center; flex-wrap:wrap}
+  .forge__svg{ width:100%; background:linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01)); border:1px solid rgba(92,111,179,.35); border-radius:10px }
+  .btn{ padding:.5rem .8rem; border-radius:10px; border:1px solid rgba(92,111,179,.45); background:#0b1324; color:var(--fg); cursor:pointer}
+  input[type="color"]{height:38px;border:1px solid rgba(92,111,179,.45);background:#0b1324;border-radius:8px}
+
+  /* ===== Boss battle & dojo ===== */
+  .row{display:flex;gap:1rem;flex-wrap:wrap}
+  .col{flex:1 1 300px; min-width:260px}
+  textarea{width:100%; min-height:120px; background:#0b1324; color:var(--fg); border:1px solid rgba(92,111,179,.35); border-radius:10px; padding:.8rem}
+  .log{max-height:220px; overflow:auto; border:1px solid rgba(92,111,179,.35); border-radius:10px; padding:.6rem; background:#0b1324}
+  .tag{display:inline-block;padding:.2rem .5rem;border-radius:999px;border:1px solid rgba(92,111,179,.35);margin:.15rem .25rem}
+
+  /* ===== Responsive trims ===== */
+  @media (max-width:560px){ .chip.hide-sm{ display:none} .subtitle{ display:none } }
+</style>
+</head>
+<body>
+<!-- Parallax -->
+<canvas id="stars" aria-hidden="true"></canvas>
+
+<!-- Loader -->
+<div class="loader active" id="loader" role="status" aria-live="polite">
+  <div class="spinner" aria-hidden="true"></div>
+  <div class="loader__text">initializing systems…</div>
+</div>
+
+<!-- HUD -->
+<div class="hud" id="hud">
+  <div class="hud__top">
+    <div class="brand"><span class="dot" aria-hidden="true"></span> Narrative Reframer</div>
+    <nav class="tabs" aria-label="Meta-domains">
+      <button class="tab" data-scene="hub">🏠 Hub</button>
+      <button class="tab" data-scene="magic">✨ Magic</button>
+      <button class="tab" data-scene="medieval">🛡️ Medieval</button>
+      <button class="tab" data-scene="alien">👽 Alien</button>
+      <button class="tab" data-scene="vampire">🩸 Vampire</button>
+      <button class="tab" data-scene="mythic">🐉 Mythic</button>
+    </nav>
+    <div class="metrics" aria-label="Status">
+      <div class="chip">🎯 Reframes: <b id="stat-reframes">0</b></div>
+      <div class="chip">🧠 Boss IQ: <b id="stat-iq">1.00x</b></div>
+      <div class="chip hide-sm">🔏 Self-hash: <b class="hash" id="stat-hash">…</b></div>
+    </div>
+  </div>
+  <div class="hud__bottom">
+    <div class="tabs" aria-label="Utilities">
+      <button class="tab" id="btn-continue">▶ Continue</button>
+      <button class="tab" id="btn-new">★ New Run</button>
+      <button class="tab" id="btn-forge">🛠️ Avatar Forge</button>
+      <button class="tab" id="btn-proof">🔒 Verify</button>
+      <button class="tab" id="btn-install">⬇ Install</button>
+    </div>
+    <div class="chip">v0.2 • single-file • offline-ready</div>
+  </div>
+</div>
+
+<!-- Avatar Forge -->
+<aside class="forge" id="forge" aria-label="Avatar forge">
+  <h3>🛠️ Avatar Forge</h3>
+  <div class="forge__row">
+    <label>Primary</label><input type="color" id="c1" value="#77f4d1"/>
+    <label>Secondary</label><input type="color" id="c2" value="#7ab6ff"/>
+    <button class="btn" id="btn-add-helm">+ Helm</button>
+    <button class="btn" id="btn-add-cape">+ Cape</button>
+    <button class="btn" id="btn-add-blade">+ Blade</button>
+    <button class="btn" id="btn-export-svg">Export SVG</button>
+  </div>
+  <svg id="forge-svg" class="forge__svg" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Avatar preview">
+    <defs>
+      <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#77f4d1"/><stop offset="1" stop-color="#7ab6ff"/></linearGradient>
+      <linearGradient id="g2" x1="0" x2="1"><stop offset="0" stop-color="#7ab6ff"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <rect width="256" height="256" rx="14" fill="url(#g2)" opacity=".03"/>
+    <g id="parts"></g>
+  </svg>
+</aside>
+
+<!-- Scene mount (one file, multi-scenes) -->
+<main class="scene" id="scene">
+  <section class="panel" id="view-hub" role="region" aria-label="Hub">
+    <div class="panel__inner">
+      <h1 class="title">Practice reframing against adaptive adversaries.</h1>
+      <p class="subtitle">Choose a meta-domain. Your moves are evidence-backed reframes. Win by upgrading clarity, empathy, and verifiability.</p>
+      <div class="grid" id="domain-grid"></div>
+    </div>
+  </section>
+
+  <!-- TEMPLATE scenes (style & copy change per theme) -->
+  <section class="panel" id="view-magic" hidden>
+    <div class="panel__inner">
+      <h2 class="title">✨ Magic — unmasking glamours</h2>
+      <p class="subtitle">Illusions collapse under testable claims. Cast verifiable light.</p>
+      <div class="row">
+        <div class="col">
+          <h3>Reframe Dojo</h3>
+          <textarea id="magic-input" placeholder="Your reframe…"></textarea>
+          <div class="forge__row"><button class="btn" data-dojo="magic">Submit Reframe</button></div>
+          <div class="log" id="magic-log" aria-live="polite"></div>
+        </div>
+        <div class="col">
+          <h3>Boss Battle</h3>
+          <div id="magic-boss" class="log"></div>
+          <div class="forge__row">
+            <button class="btn tag" data-move="evidence" data-theme="magic">📚 Evidence</button>
+            <button class="btn tag" data-move="empathy" data-theme="magic">💗 Empathy</button>
+            <button class="btn tag" data-move="clarify" data-theme="magic">🔍 Clarify</button>
+            <button class="btn tag" data-move="mirror" data-theme="magic">🪞 Mirror</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="view-medieval" hidden>
+    <div class="panel__inner">
+      <h2 class="title">🛡️ Medieval — honor vs rumor</h2>
+      <p class="subtitle">Rumor catapults fire fast. Shields are facts, not feelings.</p>
+      <div class="row">
+        <div class="col">
+          <h3>Reframe Dojo</h3>
+          <textarea id="medieval-input" placeholder="Your reframe…"></textarea>
+          <div class="forge__row"><button class="btn" data-dojo="medieval">Submit Reframe</button></div>
+          <div class="log" id="medieval-log"></div>
+        </div>
+        <div class="col">
+          <h3>Boss Battle</h3>
+          <div id="medieval-boss" class="log"></div>
+          <div class="forge__row">
+            <button class="btn tag" data-move="evidence" data-theme="medieval">📜 Evidence</button>
+            <button class="btn tag" data-move="empathy" data-theme="medieval">🤝 Empathy</button>
+            <button class="btn tag" data-move="clarify" data-theme="medieval">🗡 Clarify</button>
+            <button class="btn tag" data-move="mirror" data-theme="medieval">🛡 Mirror</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="view-alien" hidden>
+    <div class="panel__inner">
+      <h2 class="title">👽 Alien — nonhuman logic</h2>
+      <p class="subtitle">Assume different priors. Translate, don’t project.</p>
+      <div class="row">
+        <div class="col">
+          <h3>Reframe Dojo</h3>
+          <textarea id="alien-input" placeholder="Your reframe…"></textarea>
+          <div class="forge__row"><button class="btn" data-dojo="alien">Submit Reframe</button></div>
+          <div class="log" id="alien-log"></div>
+        </div>
+        <div class="col">
+          <h3>Boss Battle</h3>
+          <div id="alien-boss" class="log"></div>
+          <div class="forge__row">
+            <button class="btn tag" data-move="evidence" data-theme="alien">📡 Evidence</button>
+            <button class="btn tag" data-move="empathy" data-theme="alien">🧬 Empathy</button>
+            <button class="btn tag" data-move="clarify" data-theme="alien">🛰 Clarify</button>
+            <button class="btn tag" data-move="mirror" data-theme="alien">🪞 Mirror</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="view-vampire" hidden>
+    <div class="panel__inner">
+      <h2 class="title">🩸 Vampire — scarcity addiction</h2>
+      <p class="subtitle">Consent, sunlight, abundance. Starve the scarcity loop.</p>
+      <div class="row">
+        <div class="col">
+          <h3>Reframe Dojo</h3>
+          <textarea id="vampire-input" placeholder="Your reframe…"></textarea>
+          <div class="forge__row"><button class="btn" data-dojo="vampire">Submit Reframe</button></div>
+          <div class="log" id="vampire-log"></div>
+        </div>
+        <div class="col">
+          <h3>Boss Battle</h3>
+          <div id="vampire-boss" class="log"></div>
+          <div class="forge__row">
+            <button class="btn tag" data-move="evidence" data-theme="vampire">🔬 Evidence</button>
+            <button class="btn tag" data-move="empathy" data-theme="vampire">🫶 Empathy</button>
+            <button class="btn tag" data-move="clarify" data-theme="vampire">🕯 Clarify</button>
+            <button class="btn tag" data-move="mirror" data-theme="vampire">🪞 Mirror</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="view-mythic" hidden>
+    <div class="panel__inner">
+      <h2 class="title">🐉 Mythic — hero patterns</h2>
+      <p class="subtitle">Triumph without hubris: evidence first, poetry second.</p>
+      <div class="row">
+        <div class="col">
+          <h3>Reframe Dojo</h3>
+          <textarea id="mythic-input" placeholder="Your reframe…"></textarea>
+          <div class="forge__row"><button class="btn" data-dojo="mythic">Submit Reframe</button></div>
+          <div class="log" id="mythic-log"></div>
+        </div>
+        <div class="col">
+          <h3>Boss Battle</h3>
+          <div id="mythic-boss" class="log"></div>
+          <div class="forge__row">
+            <button class="btn tag" data-move="evidence" data-theme="mythic">📗 Evidence</button>
+            <button class="btn tag" data-move="empathy" data-theme="mythic">💞 Empathy</button>
+            <button class="btn tag" data-move="clarify" data-theme="mythic">🔎 Clarify</button>
+            <button class="btn tag" data-move="mirror" data-theme="mythic">🪞 Mirror</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ======================================================================================
+   Single-file Engine: loader, starfield, scenes, dojo, boss AI, avatar forge, PWA, hash
+   ====================================================================================== */
+
+/* ---------- Utility ---------- */
+const $ = (q,root=document)=>root.querySelector(q);
+const $$ = (q,root=document)=>Array.from(root.querySelectorAll(q));
+
+const app = {
+  dpi: Math.max(1, Math.min(window.devicePixelRatio||1, 2.5)),
+  scene: 'hub',
+  reframes: +localStorage.getItem('reframes')||0,
+  bossIQ: +localStorage.getItem('bossIQ')||1.0,
+  hash: '…',
+  swReg: null,
+  installDeferred: null,
+};
+
+/* ---------- HUD + Loader ---------- */
+const HUD = {
+  el: {
+    loader: $('#loader'),
+    txt: $('#loader .loader__text'),
+    statRe: $('#stat-reframes'),
+    statIQ: $('#stat-iq'),
+    statHash: $('#stat-hash'),
+  },
+  showLoader(msg='transitioning…'){ this.txt.textContent = msg; this.el.loader.classList.add('active'); },
+  hideLoader(){ this.el.loader.classList.remove('active'); },
+  refresh(){
+    this.el.statRe.textContent = app.reframes.toFixed(0);
+    this.el.statIQ.textContent = app.bossIQ.toFixed(2)+'x';
+    this.el.statHash.textContent = app.hash;
+  }
+};
+
+/* ---------- Parallax Starfield ---------- */
+(function starfield(){
+  const c = $('#stars'), ctx = c.getContext('2d', {alpha:true});
+  let W=0,H=0, pts=[];
+  function resize(){
+    W = c.width = Math.floor(innerWidth*app.dpi);
+    H = c.height= Math.floor(innerHeight*app.dpi);
+    pts = Array.from({length: Math.floor((W*H)/38000)}, () => ({
+      x: Math.random()*W, y: Math.random()*H, z: Math.random()*1+0.3, r: Math.random()*1.6+0.2
+    }));
+  }
+  function draw(t){
+    ctx.clearRect(0,0,W,H);
+    const drift = (t*0.00008);
+    for(const p of pts){
+      const x = (p.x + drift*40*p.z) % W;
+      const y = (p.y + drift*18*p.z) % H;
+      ctx.beginPath(); ctx.arc(x,y,p.r*app.dpi,0,Math.PI*2);
+      ctx.fillStyle = `rgba(119,244,209,${0.25 + 0.55*p.z})`; ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  addEventListener('resize', resize, {passive:true});
+  resize(); requestAnimationFrame(draw);
+})();
+
+/* ---------- Scenes ---------- */
+const SCENES = ['hub','magic','medieval','alien','vampire','mythic'];
+function goto(scene){
+  if(!SCENES.includes(scene)) scene = 'hub';
+  HUD.showLoader('loading scene…');
+  app.scene = scene;
+  setTimeout(()=>{
+    SCENES.forEach(s=> $('#view-'+s).hidden = s!==scene);
+    HUD.hideLoader();
+    localStorage.setItem('scene', scene);
+  }, 380);
+}
+$$('.tab[data-scene]').forEach(b=> b.onclick = ()=> goto(b.dataset.scene));
+
+/* Domain cards on hub */
+(function mountHub(){
+  const el = $('#domain-grid');
+  const domains = [
+    { id:'magic',   title:'Magic',    emoji:'✨', blurb:'Arcane counters vs glamours & misdirection.'},
+    { id:'medieval',title:'Medieval', emoji:'🛡️', blurb:'Honor codes vs rumor catapults.'},
+    { id:'alien',   title:'Alien',    emoji:'👽', blurb:'Nonhuman logic vs anthropic bias.'},
+    { id:'vampire', title:'Vampire',  emoji:'🩸', blurb:'Scarcity addiction vs consent & sunlight.'},
+    { id:'mythic',  title:'Mythic',   emoji:'🐉', blurb:'Heroic patterns vs hubris and doom-loops.'},
+  ];
+  el.innerHTML = '';
+  for(const d of domains){
+    const card = document.createElement('button');
+    card.className = 'card';
+    card.innerHTML = `<h3>${d.emoji} ${d.title}</h3><p>${d.blurb}</p>`;
+    card.onclick = ()=> goto(d.id);
+    el.appendChild(card);
+  }
+})();
+
+/* ---------- Reframe Dojo + Boss Engine ---------- */
+/* Simplified adaptive boss: 4 moves affect boss “stability”. Higher IQ adapts faster. */
+class Boss {
+  constructor(name, theme){
+    this.name = name; this.theme = theme;
+    this.stab = 1.0; // 1.0 = stable delusion; 0 = dissolved knot
+    this.phase = 1;
+  }
+  react(move){
+    const iq = app.bossIQ;
+    const mult = ({evidence:.36, empathy:.28, clarify:.24, mirror:.18}[move] || .2);
+    // Harder as IQ rises; but combo diversity boosts
+    const variety = (Boss.combo.add(move).size)/4; // 0..1
+    const delta = mult * (0.85+0.3*variety) / (0.8+0.5*iq);
+    this.stab = Math.max(0, this.stab - delta);
+    if(this.stab < 0.66 && this.phase===1){ this.phase=2; }
+    if(this.stab < 0.33 && this.phase===2){ this.phase=3; }
+    return { delta, stab:this.stab, phase:this.phase };
+  }
+  prompt(){
+    const tells = [
+      'asserts without sources',
+      'shifts goalposts',
+      'appeals to tribes over truth',
+      'confuses correlation for causation',
+      'frames zero-sum inevitability',
+    ];
+    const t = tells[Math.floor(Math.random()*tells.length)];
+    return `Boss (${this.name}) ${['murmurs','insists','broadcasts','chants'][Math.floor(Math.random()*4)]} a ${t}.`;
+  }
+}
+Boss.combo = new Set();
+
+/* wiring per scene */
+function setupTheme(theme){
+  const bossBox = $('#'+theme+'-boss');
+  const log = $('#'+theme+'-log');
+  const input = $('#'+theme+'-input');
+  const boss = new Boss(theme.toUpperCase(), theme);
+
+  bossBox.textContent = boss.prompt();
+
+  $$('.btn.tag[data-theme="'+theme+'"]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const mv = btn.dataset.move;
+      Boss.combo.add(mv);
+      const {stab, phase} = boss.react(mv);
+      const msg = `You used ${mv}. Boss stability ${(stab*100).toFixed(0)}%  • phase ${phase}`;
+      const p = document.createElement('div'); p.textContent = msg; log.prepend(p);
+      app.reframes++; localStorage.setItem('reframes', app.reframes);
+      if(stab<=0){
+        const w = document.createElement('div');
+        w.innerHTML = `<span class="tag" style="border-color:var(--ok)">✅ Knot dissolved</span>`;
+        log.prepend(w);
+        bossBox.textContent = 'Boss calms. Acknowledges scope, updates claim.';
+      } else {
+        bossBox.textContent = boss.prompt();
+      }
+      HUD.refresh();
+    };
+  });
+
+  $('[data-dojo="'+theme+'"]').onclick = ()=>{
+    const txt = (input.value||'').trim();
+    if(!txt) return;
+    const score = dojoScore(txt);
+    const line = document.createElement('div');
+    line.innerHTML = `📝 <b>${score.label}</b> — ${score.notes}`;
+    log.prepend(line);
+    input.value='';
+  };
+}
+['magic','medieval','alien','vampire','mythic'].forEach(setupTheme);
+
+function dojoScore(text){
+  // Tiny heuristic “coach”: boost for citations, structure, empathy markers
+  const t = text.toLowerCase();
+  let s=0, notes=[];
+  if(/\b(according to|per|source|data|study|report|dataset)\b/.test(t)){ s+=2; notes.push('has sources') }
+  if(/[0-9]+%|\b(95%|2x|three|five)\b/.test(t)){ s+=1; notes.push('quantifies') }
+  if(/\b(i hear|i see|i understand|i get that)\b/.test(t)){ s+=1; notes.push('shows empathy') }
+  if(/\b(define|clarify|scope|timeframe|units)\b/.test(t)){ s+=1; notes.push('clarifies scope') }
+  if(/\b(we|together|us)\b/.test(t)){ s+=.5; notes.push('collective tone') }
+  const label = s>=3.5?'strong': s>=2?'good':'needs work';
+  return {label, notes: notes.join(', ')||'try adding source + scope + empathy'};
+}
+
+/* ---------- Avatar Forge ---------- */
+const forge = $('#forge'), parts = $('#parts');
+const C = { primary: $('#c1').value, secondary: $('#c2').value };
+function recolor(){
+  $$('stop[offset="0"]',$('#forge-svg defs #g1')).forEach(s=>s.setAttribute('stop-color', C.primary));
+  $$( 'stop[offset="1"]',$('#forge-svg defs #g1')).forEach(s=>s.setAttribute('stop-color', C.secondary));
+}
+$('#c1').oninput = (e)=>{ C.primary=e.target.value; recolor(); };
+$('#c2').oninput = (e)=>{ C.secondary=e.target.value; recolor(); };
+
+function addHelm(){
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.innerHTML = `<g filter="url(#glow)">
+    <path d="M128 36c52 0 82 24 82 58 0 24-11 47-30 64H76C57 141 46 118 46 94c0-34 30-58 82-58z" fill="url(#g1)" opacity=".88"/>
+    <circle cx="128" cy="100" r="14" fill="#07101c"/>
+  </g>`;
+  parts.appendChild(g);
+}
+function addCape(){
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.innerHTML = `<path d="M48 96c18 22 42 40 80 40s62-18 80-40l-18 110H66L48 96z" fill="url(#g1)" opacity=".4"/>`;
+  parts.appendChild(g);
+}
+function addBlade(){
+  const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+  g.innerHTML = `<g filter="url(#glow)">
+    <rect x="124" y="48" width="8" height="130" fill="url(#g1)"/><rect x="120" y="178" width="16" height="24" rx="3" fill="#0b1324"/>
+  </g>`;
+  parts.appendChild(g);
+}
+$('#btn-add-helm').onclick = addHelm;
+$('#btn-add-cape').onclick = addCape;
+$('#btn-add-blade').onclick = addBlade;
+
+$('#btn-export-svg').onclick = ()=>{
+  const svg = $('#forge-svg').outerHTML.replaceAll('<defs>','<defs><!-- Built by Foster + Navi -->');
+  const blob = new Blob([svg], {type:'image/svg+xml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'avatar.svg'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+};
+
+/* Toggle forge */
+$('#btn-forge').onclick = ()=> forge.classList.toggle('open');
+
+/* ---------- Self-hash provenance (SHA-256 of <body> innerHTML) ---------- */
+async function sha256Hex(str){
+  const enc = new TextEncoder().encode(str);
+  const buf = await crypto.subtle.digest('SHA-256', enc);
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+(async ()=>{
+  // Wait a tick so dynamic URLs exist
+  await new Promise(r=>setTimeout(r,50));
+  app.hash = await sha256Hex(document.body.innerHTML);
+  HUD.refresh();
+})();
+
+/* ---------- PWA: inline manifest + inline service worker ---------- */
+(async function pwa(){
+  // 1) generate tiny icon via canvas → blob URL
+  function makeIcon(size){
+    const c = document.createElement('canvas'); c.width=c.height=size;
+    const x=c.getContext('2d'); x.fillStyle='#0b1324'; x.fillRect(0,0,size,size);
+    x.fillStyle='#77f4d1'; x.beginPath(); x.arc(size/2,size/2,size*0.34,0,Math.PI*2); x.fill();
+    return new Promise(res=> c.toBlob(b=> res(URL.createObjectURL(b)), 'image/png') );
+  }
+  const icon192 = await makeIcon(192), icon512 = await makeIcon(512);
+
+  // 2) make manifest JSON → blob URL
+  const manifest = {
+    name: "Narrative Reframer",
+    short_name: "Reframer",
+    start_url: ".",
+    display: "standalone",
+    background_color: "#070a12",
+    theme_color: "#0b0f1a",
+    icons: [
+      {src: icon192, sizes:"192x192", type:"image/png"},
+      {src: icon512, sizes:"512x512", type:"image/png"}
+    ]
+  };
+  const manURL = URL.createObjectURL(new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'}));
+  const link = document.createElement('link'); link.rel='manifest'; link.href=manURL; document.head.appendChild(link);
+
+  // 3) register service worker from a Blob (caches this page for offline reloads)
+  const swCode = `
+    const CACHE='reframer-cache-v1';
+    self.addEventListener('install',e=>{
+      e.waitUntil((async()=>{ const c=await caches.open(CACHE); await c.addAll([self.registration.scope]); })());
+      self.skipWaiting();
+    });
+    self.addEventListener('activate',e=>{ e.waitUntil(self.clients.claim()); });
+    self.addEventListener('fetch',e=>{
+      const req=e.request;
+      e.respondWith((async()=>{
+        const url=new URL(req.url);
+        if(url.href===self.registration.scope){ // main HTML
+          const c=await caches.open(CACHE);
+          const r=await c.match(url.href);
+          if(r) return r;
+          const f=await fetch(req);
+          c.put(url.href, f.clone());
+          return f;
+        }
+        // network-first then cache fallback for everything else
+        try{
+          const f=await fetch(req); return f;
+        }catch(e){
+          const c=await caches.open(CACHE); const r=await c.match(req); if(r) return r;
+          return new Response('offline', {status:503});
+        }
+      })());
+    });
+  `;
+  const swURL = URL.createObjectURL(new Blob([swCode], {type:'text/javascript'}));
+  if('serviceWorker' in navigator){
+    try{
+      app.swReg = await navigator.serviceWorker.register(swURL,{scope:'./'});
+      // prime cache for this page URL
+      if('caches' in window){
+        const c = await caches.open('reframer-cache-v1'); await c.add(location.href);
+      }
+    }catch(e){ console.warn('SW registration failed', e); }
+  }
+
+  // 4) install prompt
+  window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); app.installDeferred=e; $('#btn-install').disabled=false; });
+  $('#btn-install').onclick = ()=>{ if(app.installDeferred){ app.installDeferred.prompt(); app.installDeferred=null; } };
+})();
+
+/* ---------- Verify button (proves current self-hash matches recomputed) ---------- */
+$('#btn-proof').onclick = async ()=>{
+  HUD.showLoader('verifying…');
+  const recompute = await sha256Hex(document.body.innerHTML);
+  setTimeout(()=>{
+    HUD.hideLoader();
+    if(recompute===app.hash) alert('✅ Self-hash matches: '+app.hash.slice(0,16)+'…');
+    else alert('⚠️ Hash mismatch! Current: '+recompute.slice(0,16)+'… vs stored '+app.hash.slice(0,16)+'…');
+  }, 300);
+};
+
+/* ---------- New run / Continue ---------- */
+$('#btn-new').onclick = ()=>{
+  localStorage.clear();
+  app.reframes=0; app.bossIQ=1.0; Boss.combo.clear();
+  HUD.refresh(); alert('New run started. Local progress reset.');
+};
+$('#btn-continue').onclick = ()=>{
+  const scene = localStorage.getItem('scene')||'hub';
+  goto(scene);
+};
+
+/* ---------- Boot choreography ---------- */
+addEventListener('keydown', (e)=>{ if(e.key==='Escape') HUD.hideLoader(); });
+setTimeout(()=> HUD.hideLoader(), 700);
+goto(localStorage.getItem('scene')||'hub');
+HUD.refresh();
+recolor();
+
+/* ---------- Safety: ensure this page is cached for offline reloads ---------- */
+(async()=>{ if('caches' in window){ try{ const c=await caches.open('reframer-cache-v1'); await c.add(location.href);}catch(e){} }})();
+</script>
+<noscript>
+  <div style="position:fixed;inset:auto 0 0 0;background:#1b2238;color:#e6f1ff;padding:.75rem 1rem;border-top:1px solid rgba(92,111,179,.45);font:500 14px/1.4 system-ui,Segoe UI,Inter,Roboto,sans-serif;z-index:10">
+    ⚠️ JavaScript is disabled. Interactive scenes, boss battles, and offline features require JS. Enable it to use the Narrative Reframer.
+  </div>
+</noscript>
+
+<footer aria-label="Site footer" style="position:fixed;left:0;right:0;bottom:0;z-index:1;pointer-events:none">
+  <div style="max-width:1200px;margin:0 auto;padding:.6rem 1rem;display:flex;gap:.8rem;align-items:center;justify-content:space-between;color:#9bb3d1;font:500 12px/1.4 system-ui,Segoe UI,Inter,Roboto,sans-serif;background:linear-gradient(0deg,rgba(10,14,25,.55),rgba(10,14,25,0));border-top:1px solid rgba(92,111,179,.35);pointer-events:auto">
+    <span>🔒 Self-hash provenance active • PWA offline-ready</span>
+    <span>Shortcuts: <kbd>Esc</kbd> hide loader · HUD tabs to switch scenes</span>
+  </div>
+</footer>
+
+</body>
+</html>

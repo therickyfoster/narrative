@@ -1,0 +1,97 @@
+project: PRA Narrative Reframer
+offline_first: true
+pwa:
+  - /manifest.webmanifest
+  - /service-worker.js
+shared_libs:
+  css:
+    - /css/reset.css            # minimal reset
+    - /css/hud.css              # responsive HUD (scales across user agents)
+    - /css/loader.css           # cinematic loading screen & scene transitions
+    - /css/theme-anim.css       # parallax, particles, camera sweeps
+  js:
+    - /js/core.js               # router, scene manager, state, save/load
+    - /js/hud.js                # HUD layout, DPI scaling, input mapping
+    - /js/loader.js             # universal cinematic loader between HTML pages
+    - /js/particles.js          # GPU-friendly particles (requestAnimationFrame)
+    - /js/avatar-forge.js       # SVG gear builder (assemble + recolor + export)
+    - /js/reframe-dojo.js       # prompts, counters, AI “counter-narrative” ladders
+    - /js/boss-engine.js        # turn loop, tells, phases, adaptive difficulty
+    - /js/theme-engine.js       # swaps palettes, SFX maps, assets per meta-domain
+assets:
+  svg_gear:
+    - /assets/gear/base/*.svg   # bodies, heads, torsos
+    - /assets/gear/hats/*.svg
+    - /assets/gear/capes/*.svg
+    - /assets/gear/weapons/*.svg
+    - /assets/gear/charms/*.svg
+    - /assets/gear/vfx/*.svg    # additive glow layers, trails
+  ui:
+    - /assets/ui/logo.svg
+    - /assets/ui/hud/*.svg
+  audio:
+    - /assets/sfx/click.webm
+    - /assets/sfx/charge.webm
+    - /assets/sfx/hit.webm
+    - /assets/bgm/ambient.webm
+routing:
+  root_hub: /index.html         # selects domain; shows loader between pages
+  universal_loader: /loader.html # optional dedicated loader page (or inline)
+domains:
+  - id: magic
+    palette: arcane_neon
+    pages:
+      - /magic/index.html           # domain landing + starfield parallax
+      - /magic/mission-map.html     # quests → reframing challenges
+      - /magic/boss-battle.html     # boss phases; counters = “reframe moves”
+      - /magic/reframe-dojo.html    # practice with escalating adversarial AI
+      - /magic/avatar-forge.html    # build/export SVG gear
+      - /magic/lore-codex.html      # unlockables; evidentiary links
+  - id: medieval
+    palette: iron_oak
+    pages:
+      - /medieval/index.html
+      - /medieval/mission-map.html
+      - /medieval/boss-battle.html
+      - /medieval/reframe-dojo.html
+      - /medieval/avatar-forge.html
+      - /medieval/lore-codex.html
+  - id: alien
+    palette: bioluminal
+    pages:
+      - /alien/index.html
+      - /alien/mission-map.html
+      - /alien/boss-battle.html
+      - /alien/reframe-dojo.html
+      - /alien/avatar-forge.html
+      - /alien/lore-codex.html
+  - id: vampire
+    palette: crimson_noir
+    pages:
+      - /vampire/index.html
+      - /vampire/mission-map.html
+      - /vampire/boss-battle.html
+      - /vampire/reframe-dojo.html
+      - /vampire/avatar-forge.html
+      - /vampire/lore-codex.html
+  - id: mythic
+    palette: prismatic
+    pages:
+      - /mythic/index.html
+      - /mythic/mission-map.html
+      - /mythic/boss-battle.html
+      - /mythic/reframe-dojo.html
+      - /mythic/avatar-forge.html
+      - /mythic/lore-codex.html
+index_count:
+  root: 1
+  per_domain: 6
+  domains_total: 5
+  shared_system_pages: 0-2       # (optional) /loader.html, /credits.html
+  TOTAL_ESTIMATE: 1 + (5*6) + 2 = 33
+save_system:
+  storage: IndexedDB (state, gear parts, progress); localStorage (prefs)
+  export: JSON profile + embedded SVG gear sheet
+ci_integrity:
+  - generate .sha256 for every HTML/CSS/JS/asset
+  - write /proofs/manifest.json with file → hash map

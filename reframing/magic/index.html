@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Narrative Reframer — Magic Domain</title>
+<meta name="theme-color" content="#0b0f1a">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  :root{
+    --bg:#070a12; --bg2:#0e1730; --fg:#e6f1ff; --muted:#9bb3d1; --accent:#caa7ff; /* arcane tint */
+    --hud:#0c1324cc; --hud-border:#8f7ad6; --ok:#77f4d1; --warn:#ffda78; --bad:#ff6b6b;
+    --shadow:0 12px 40px rgba(0,0,0,.45);
+  }
+  body{
+    background:radial-gradient(1200px 800px at 50% 40%, var(--bg2) 0%, var(--bg) 60%, #05070c 100%);
+    color:var(--fg); font: 500 16px/1.45 system-ui, Inter, Segoe UI, Roboto, sans-serif;
+    overflow:hidden
+  }
+  a{color:var(--accent); text-decoration:none}
+  /* Loader */
+  .loader{position:fixed;inset:0;display:grid;place-items:center;z-index:9;background:linear-gradient(180deg,rgba(8,12,22,.98),rgba(6,9,16,.98));opacity:0;transform:scale(1.02);transition:opacity .6s, transform .8s;pointer-events:none}
+  .loader.active{opacity:1;transform:scale(1);pointer-events:auto}
+  .spinner{width:min(30vmin,240px);aspect-ratio:1;border-radius:50%;border:2px solid rgba(255,255,255,.08);position:relative;filter:drop-shadow(0 0 16px rgba(202,167,255,.45));animation:spin 6s linear infinite}
+  .spinner::before,.spinner::after{content:"";position:absolute;inset:6%;border-radius:50%}
+  .spinner::before{border:2px dashed rgba(202,167,255,.55);animation:spin 10s linear infinite reverse}
+  .spinner::after{box-shadow:inset 0 0 80px 8px rgba(202,167,255,.2), 0 0 80px rgba(202,167,255,.16)}
+  .loader__text{margin-top:1rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--muted)}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  /* Starfield + “glyph drift” */
+  #stars,#glyphs{position:fixed;inset:0;z-index:0}
+  /* HUD */
+  .hud{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto;z-index:2;pointer-events:none}
+  .hud__top,.hud__bottom{display:flex;justify-content:space-between;align-items:center;padding:clamp(8px,2vmin,18px);pointer-events:auto}
+  .hud__top{background:linear-gradient(180deg,rgba(10,14,25,.55),rgba(10,14,25,0));border-bottom:1px solid rgba(143,122,214,.35)}
+  .hud__bottom{background:linear-gradient(0deg,rgba(10,14,25,.55),rgba(10,14,25,0));border-top:1px solid rgba(143,122,214,.35)}
+  .brand{display:flex;gap:.8rem;align-items:center;font-weight:800;letter-spacing:.04em}
+  .dot{width:.75rem;height:.75rem;border-radius:50%;background:var(--accent);box-shadow:0 0 24px rgba(202,167,255,.45)}
+  .tabs{display:flex;gap:.5rem;flex-wrap:wrap}
+  .tab{padding:.6rem .9rem;border:1px solid rgba(143,122,214,.45);border-radius:12px;background:var(--hud);backdrop-filter:blur(6px);cursor:pointer;user-select:none;transition:transform .12s,border-color .2s}
+  .tab:hover{transform:translateY(-2px);border-color:var(--accent)}
+  .metrics{display:flex;gap:.8rem;align-items:center}
+  .chip{padding:.45rem .7rem;border:1px solid rgba(143,122,214,.45);border-radius:999px;background:var(--hud)}
+  .hash{max-width:48vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* Scene */
+  .scene{position:absolute;inset:0;display:grid;place-items:center;z-index:1;padding:clamp(12px,3vmin,48px)}
+  .panel{width:min(1200px,92vw);min-height:min(72vh,72dvh);background:linear-gradient(180deg,rgba(26,16,44,.55),rgba(14,10,24,.5));border:1px solid rgba(143,122,214,.45);border-radius:18px;backdrop-filter:blur(10px);box-shadow:var(--shadow);overflow:hidden;position:relative}
+  .panel__inner{padding:clamp(12px,2.4vmin,28px);display:grid;gap:1.2rem}
+  .title{font-size:clamp(22px,3.2vmin,38px);font-weight:900;letter-spacing:.02em}
+  .subtitle{color:var(--muted)}
+  .row{display:flex;gap:1rem;flex-wrap:wrap}
+  .col{flex:1 1 320px;min-width:280px}
+  textarea{width:100%;min-height:140px;background:#0b1324;color:var(--fg);border:1px solid rgba(143,122,214,.35);border-radius:10px;padding:.8rem}
+  .log{max-height:260px;overflow:auto;border:1px solid rgba(143,122,214,.35);border-radius:10px;padding:.6rem;background:#0b1324}
+  .tag{display:inline-block;padding:.35rem .6rem;border-radius:999px;border:1px solid rgba(143,122,214,.45);margin:.15rem .25rem;background:rgba(12,10,24,.55)}
+  .card{border:1px solid rgba(143,122,214,.45);border-radius:14px;padding:.6rem .8rem;background:linear-gradient(180deg,rgba(100,60,170,.12),rgba(12,10,24,.3));margin:.25rem 0}
+  /* Avatar forge (inline) */
+  .forge{position:fixed;right:16px;top:72px;z-index:3;width:min(420px,92vw);border:1px solid rgba(143,122,214,.45);border-radius:14px;background:var(--hud);backdrop-filter:blur(8px);box-shadow:var(--shadow);padding:.8rem;display:none;gap:.6rem}
+  .forge.open{display:grid}
+  .forge__row{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}
+  .forge__svg{width:100%;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));border:1px solid rgba(143,122,214,.35);border-radius:10px}
+  .btn{padding:.5rem .8rem;border-radius:10px;border:1px solid rgba(143,122,214,.45);background:#0b1324;color:var(--fg);cursor:pointer}
+  input[type="color"]{height:38px;border:1px solid rgba(143,122,214,.45);background:#0b1324;border-radius:8px}
+  @media (max-width:560px){.chip.hide-sm{display:none}.subtitle{display:none}}
+</style>
+</head>
+<body>
+<canvas id="stars" aria-hidden="true"></canvas>
+<canvas id="glyphs" aria-hidden="true"></canvas>
+
+<div class="loader active" id="loader" role="status" aria-live="polite">
+  <div class="spinner" aria-hidden="true"></div>
+  <div class="loader__text">weaving sigils…</div>
+</div>
+
+<div class="hud" id="hud">
+  <div class="hud__top">
+    <div class="brand"><span class="dot" aria-hidden="true"></span> Reframer • Magic</div>
+    <nav class="tabs" aria-label="Scenes">
+      <button class="tab" data-nav="/index.html">🏠 Hub</button>
+      <button class="tab" data-scene="dojo">🪄 Dojo</button>
+      <button class="tab" data-scene="boss">🧙‍♂️ Boss</button>
+      <button class="tab" data-scene="codex">📖 Codex</button>
+      <button class="tab" id="btn-forge">🛠️ Forge</button>
+    </nav>
+    <div class="metrics">
+      <div class="chip">🎯 Reframes: <b id="stat-reframes">0</b></div>
+      <div class="chip">🧠 Boss IQ: <b id="stat-iq">1.00x</b></div>
+      <div class="chip hide-sm">🔏 Self-hash: <b id="stat-hash" class="hash">…</b></div>
+    </div>
+  </div>
+  <div class="hud__bottom">
+    <div class="tabs">
+      <button class="tab" id="btn-new">★ New Run</button>
+      <button class="tab" id="btn-proof">🔒 Verify</button>
+      <button class="tab" id="btn-install">⬇ Install</button>
+    </div>
+    <div class="chip">v0.2 • standalone • offline-ready</div>
+  </div>
+</div>
+
+<!-- Avatar Forge -->
+<aside class="forge" id="forge" aria-label="Avatar forge">
+  <h3>🛠️ Arcane Forge</h3>
+  <div class="forge__row">
+    <label>Primary</label><input type="color" id="c1" value="#caa7ff"/>
+    <label>Secondary</label><input type="color" id="c2" value="#77f4d1"/>
+    <button class="btn" id="btn-add-helm">+ Helm</button>
+    <button class="btn" id="btn-add-cape">+ Cape</button>
+    <button class="btn" id="btn-add-wand">+ Wand</button>
+    <button class="btn" id="btn-export-svg">Export SVG</button>
+  </div>
+  <svg id="forge-svg" class="forge__svg" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Avatar preview">
+    <defs>
+      <linearGradient id="g1" x1="0" x2="1"><stop offset="0" stop-color="#caa7ff"/><stop offset="1" stop-color="#77f4d1"/></linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <rect width="256" height="256" rx="14" fill="url(#g1)" opacity=".06"/>
+    <g id="parts"></g>
+  </svg>
+</aside>
+
+<main class="scene" id="scene">
+  <!-- DOJO -->
+  <section class="panel" id="view-dojo" role="region" aria-label="Magic Dojo">
+    <div class="panel__inner">
+      <h1 class="title">✨ Magic Dojo — unmask the glamour</h1>
+      <p class="subtitle">Write a reframe. The coach scores for sources, empathy, scope/clarity, and quantification. Saved offline (IndexedDB).</p>
+      <div class="row">
+        <div class="col">
+          <h3>Compose</h3>
+          <textarea id="dojo-input" placeholder="Ex: According to the 2024 water report, rainfall dropped 18%. I understand the concern; let’s define the timeframe (2010–2024) and compare per-capita use."></textarea>
+          <div class="forge__row">
+            <button class="btn" id="btn-submit">Submit Reframe</button>
+            <button class="btn" id="btn-export">Export Log (JSON)</button>
+            <span class="chip">Saved: <b id="saved-count">0</b></span>
+          </div>
+          <div class="log" id="dojo-log" aria-live="polite"></div>
+        </div>
+        <div class="col">
+          <h3>Coach Tips</h3>
+          <div class="card">📚 Cite at least one source (report, dataset, paper).</div>
+          <div class="card">🔎 Narrow the scope (time, place, units).</div>
+          <div class="card">💗 Acknowledge feelings (impact ≠ evidence).</div>
+          <div class="card">🧮 Quantify where possible.</div>
+          <div class="card">🧵 Build a chain: claim → test → update.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BOSS -->
+  <section class="panel" id="view-boss" hidden role="region" aria-label="Magic Boss">
+    <div class="panel__inner">
+      <h1 class="title">🧙‍♂️ Boss — The Glamourweaver</h1>
+      <p class="subtitle">Phases, tells, counters. Reduce stability to dissolve the knot.</p>
+      <div class="row">
+        <div class="col">
+          <h3>Status</h3>
+          <div id="boss-status" class="log"></div>
+          <div class="card"><b>Phase Map:</b> 1) Bluff & Dazzle → 2) Goalpost Slides → 3) Double-Bind → 4) Reconciliation</div>
+          <div class="forge__row">
+            <button class="btn tag" data-move="evidence">📚 Evidence</button>
+            <button class="btn tag" data-move="empathy">💗 Empathy</button>
+            <button class="btn tag" data-move="clarify">🔍 Clarify</button>
+            <button class="btn tag" data-move="mirror">🪞 Mirror</button>
+            <button class="btn tag" data-move="timeout">⏱ Timeout</button>
+          </div>
+        </div>
+        <div class="col">
+          <h3>Battle Log</h3>
+          <div id="boss-log" class="log"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CODEX -->
+  <section class="panel" id="view-codex" hidden role="region" aria-label="Magic Codex">
+    <div class="panel__inner">
+      <h1 class="title">📖 Lore Codex — spellbook of clarity</h1>
+      <p class="subtitle">Unlock entries by dissolving knots. Entries are stored locally; export to share proofs.</p>
+      <div id="codex-list" class="log"></div>
+      <div class="forge__row">
+        <button class="btn" id="btn-codex-export">Export Codex</button>
+        <button class="btn" id="btn-codex-clear">Clear Codex</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+/* =========================
+   Magic Domain Single-File
+   ========================= */
+
+/* Utils */
+const $ = (q,root=document)=>root.querySelector(q);
+const $$ = (q,root=document)=>Array.from(root.querySelectorAll(q));
+
+const app = {
+  dpi: Math.max(1, Math.min(devicePixelRatio||1, 2.5)),
+  reframes: +localStorage.getItem('reframes')||0,
+  bossIQ: +localStorage.getItem('bossIQ')||1.0,
+  hash: '…',
+  swReg: null,
+  installDeferred: null,
+};
+
+/* HUD + Loader */
+const HUD = {
+  el:{ loader:$('#loader'), txt:$('#loader .loader__text'), re:$('#stat-reframes'), iq:$('#stat-iq'), h:$('#stat-hash') },
+  show(msg='transitioning…'){ this.txt.textContent=msg; this.el.loader.classList.add('active'); },
+  hide(){ this.el.loader.classList.remove('active'); },
+  refresh(){ this.el.re.textContent=app.reframes; this.el.iq.textContent=app.bossIQ.toFixed(2)+'x'; this.el.h.textContent=app.hash; }
+};
+setTimeout(()=>HUD.hide(), 700);
+
+/* Parallax background: stars + drifting arcane glyphs */
+(function starfield(){
+  const c = $('#stars'), ctx = c.getContext('2d', {alpha:true});
+  let W=0,H=0, pts=[];
+  function resize(){ W=c.width=Math.floor(innerWidth*app.dpi); H=c.height=Math.floor(innerHeight*app.dpi);
+    pts = Array.from({length: Math.floor((W*H)/36000)}, () => ({x:Math.random()*W, y:Math.random()*H, z:Math.random()*1+0.3, r:Math.random()*1.6+0.2}));
+  }
+  function draw(t){ ctx.clearRect(0,0,W,H); const d=t*0.00008;
+    for(const p of pts){ const x=(p.x+d*36*p.z)%W, y=(p.y+d*16*p.z)%H;
+      ctx.beginPath(); ctx.arc(x,y,p.r*app.dpi,0,Math.PI*2);
+      ctx.fillStyle=`rgba(202,167,255,${0.25+0.55*p.z})`; ctx.fill();
+    }
+    requestAnimationFrame(draw);
+  }
+  addEventListener('resize', resize, {passive:true}); resize(); requestAnimationFrame(draw);
+})();
+(function glyphs(){
+  const c = $('#glyphs'), g = c.getContext('2d', {alpha:true});
+  let W=0,H=0, syms = 'ᚠᚢᚦᚨᚱᚲᛟ✶✷✸✹✺✻✼✽✾✿⚚⚝';
+  let nodes=[];
+  function resize(){ W=c.width=Math.floor(innerWidth*app.dpi); H=c.height=Math.floor(innerHeight*app.dpi);
+    nodes = Array.from({length: 36}, () => ({x:Math.random()*W, y:Math.random()*H, s: (Math.random()*0.7+0.5), v:(Math.random()*0.6+0.2)}));
+  }
+  function draw(t){
+    g.clearRect(0,0,W,H); g.font = `${14*app.dpi}px serif`; g.globalAlpha = 0.25;
+    nodes.forEach((n,i)=>{ n.x=(n.x + n.v) % W; n.y=(n.y + Math.sin((t*0.001+i)*n.v))%H;
+      g.save(); g.translate(n.x,n.y); g.rotate((t*0.0002)*(i%2?1:-1)); g.scale(n.s,n.s);
+      g.fillStyle = 'rgba(202,167,255,0.9)'; g.fillText(syms[i%syms.length], 0, 0); g.restore();
+    });
+    requestAnimationFrame(draw);
+  }
+  addEventListener('resize', resize, {passive:true}); resize(); requestAnimationFrame(draw);
+})();
+
+/* Scene Router (within this file) */
+const SCENES=['dojo','boss','codex'];
+function goto(scene){
+  if(!SCENES.includes(scene)) scene='dojo';
+  HUD.show('loading scene…');
+  setTimeout(()=>{
+    SCENES.forEach(s=> $('#view-'+s).hidden = (s!==scene));
+    localStorage.setItem('magic-scene', scene);
+    HUD.hide();
+  }, 360);
+}
+$$('.tab[data-scene]').forEach(b=> b.onclick = ()=> goto(b.dataset.scene));
+$$('.tab[data-nav]').forEach(b=> b.onclick = ()=> { HUD.show('returning…'); setTimeout(()=>location.href=b.dataset.nav, 360); });
+goto(localStorage.getItem('magic-scene')||'dojo');
+
+/* IndexedDB setup for dojo entries & codex */
+const DB = {
+  db:null,
+  async open(){
+    return new Promise((res,rej)=>{
+      const r = indexedDB.open('reframer', 1);
+      r.onupgradeneeded = (e)=>{
+        const db = e.target.result;
+        if(!db.objectStoreNames.contains('dojo')) db.createObjectStore('dojo',{keyPath:'id', autoIncrement:true});
+        if(!db.objectStoreNames.contains('codex')) db.createObjectStore('codex',{keyPath:'key'});
+      };
+      r.onsuccess = ()=>{ DB.db=r.result; res(DB.db); };
+      r.onerror = ()=> rej(r.error);
+    });
+  },
+  tx(store,mode='readonly'){ return DB.db.transaction(store, mode).objectStore(store); },
+  add(store,val){ return new Promise((res,rej)=>{ const req=DB.tx(store,'readwrite').add(val); req.onsuccess=()=>res(req.result); req.onerror=()=>rej(req.error); }); },
+  all(store){ return new Promise((res,rej)=>{ const out=[]; const req=DB.tx(store).openCursor(); req.onsuccess=e=>{ const cur=e.target.result; if(cur){ out.push(cur.value); cur.continue(); } else res(out); }; req.onerror=()=>rej(req.error); }); },
+  put(store,val){ return new Promise((res,rej)=>{ const req=DB.tx(store,'readwrite').put(val); req.onsuccess=()=>res(); req.onerror=()=>rej(req.error); }); },
+  clear(store){ return new Promise((res,rej)=>{ const req=DB.tx(store,'readwrite').clear(); req.onsuccess=()=>res(); req.onerror=()=>rej(req.error); }); }
+};
+await DB.open();
+
+/* Dojo scoring */
+function scoreReframe(text){
+  const t=text.toLowerCase(); let s=0, notes=[];
+  if(/\b(according to|per|source|data|study|report|dataset)\b/.test(t)){ s+=2; notes.push('sources') }
+  if(/[0-9]+%|\b(2x|three|five|ten|95%)\b/.test(t)){ s+=1; notes.push('quantifies') }
+  if(/\b(i hear|i see|i understand|i get that|i’m hearing)\b/.test(t)){ s+=1; notes.push('empathy') }
+  if(/\b(define|clarify|scope|timeframe|units|baseline)\b/.test(t)){ s+=1; notes.push('clarifies scope') }
+  if(/\b(we|together|us)\b/.test(t)){ s+=.5; notes.push('collective tone') }
+  const label = s>=3.5?'strong': s>=2?'good':'needs work';
+  return {label,score:s,notes:notes.join(', ')||'add source + scope + empathy'};
+}
+
+/* Dojo UI */
+const dojoIn = $('#dojo-input'), dojoLog = $('#dojo-log'), savedCount = $('#saved-count');
+async function refreshDojoLog(){
+  const rows = await DB.all('dojo'); savedCount.textContent = rows.length;
+  dojoLog.innerHTML = rows.slice(-50).reverse().map(r=>`<div class="card"><b>${r.label.toUpperCase()}</b> — ${r.notes}<br><small>${new Date(r.ts).toLocaleString()}</small><br>${r.text.replace(/</g,'&lt;')}</div>`).join('');
+}
+$('#btn-submit').onclick = async ()=>{
+  const txt=(dojoIn.value||'').trim(); if(!txt) return;
+  const {label,score,notes}=scoreReframe(txt);
+  await DB.add('dojo',{ ts:Date.now(), domain:'magic', text:txt, label, score, notes });
+  app.reframes++; localStorage.setItem('reframes', app.reframes); HUD.refresh();
+  dojoIn.value=''; refreshDojoLog();
+  // small chance to unlock codex entry
+  if(score>=3){
+    await DB.put('codex',{key:'magic:glamour', title:'Glamour Dissolution', body:'Track claims → test → update. Evidence > vibes.', ts:Date.now()});
+  }
+};
+$('#btn-export').onclick = async ()=>{
+  const rows = await DB.all('dojo');
+  const blob = new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='magic-dojo-log.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+refreshDojoLog();
+
+/* Boss Engine */
+class Boss{
+  constructor(name){ this.name=name; this.stab=1.0; this.phase=1; this.combo=new Set(); }
+  tell(){
+    const t=['asserts without sources','shifts goalposts','equivocates terms','confuses correlation with causation','frames zero-sum inevitability'];
+    return `The ${this.name} ${['murmurs','insists','broadcasts','chants'][Math.floor(Math.random()*4)]} and ${t[Math.floor(Math.random()*t.length)]}.`;
+  }
+  react(move){
+    const iq = app.bossIQ;
+    const mult = ({evidence:.38, empathy:.28, clarify:.24, mirror:.18, timeout:.14}[move]||.2);
+    const variety = (this.combo.add(move), this.combo.size/5);
+    // phase resistance increases with IQ and phase
+    const resist = 0.8 + 0.35*iq + 0.12*(this.phase-1);
+    const delta = mult * (0.9+0.3*variety) / resist;
+    this.stab = Math.max(0, this.stab - delta);
+    if(this.stab<0.75&&this.phase===1) this.phase=2;
+    if(this.stab<0.45&&this.phase===2) this.phase=3;
+    if(this.stab===0) this.phase=4;
+    return {stab:this.stab,phase:this.phase,delta};
+  }
+}
+const boss = new Boss('Glamourweaver');
+const bossStatus = $('#boss-status'), bossLog = $('#boss-log');
+function postLog(msg){ const d=document.createElement('div'); d.textContent=msg; bossLog.prepend(d); }
+function refreshStatus(){ bossStatus.innerHTML = `<div class="card">Stability: <b>${Math.round(boss.stab*100)}%</b> • Phase <b>${boss.phase}</b></div><div>${boss.tell()}</div>`; }
+refreshStatus();
+$$('button[data-move]').forEach(b=> b.onclick=()=>{
+  const mv=b.dataset.move; const {stab,phase}=boss.react(mv);
+  postLog(`You cast ${mv}. Stability → ${Math.round(stab*100)}% • phase ${phase}`);
+  app.reframes++; localStorage.setItem('reframes', app.reframes); HUD.refresh();
+  if(stab<=0){
+    postLog('✅ Knot dissolved. Boss acknowledges scope & updates claim.');
+    DB.put('codex',{key:'magic:reconciliation', title:'Reconciliation Pattern', body:'Name uncertainty, share sources, set next test.', ts:Date.now()}).then(()=>refreshCodex());
+  }
+  refreshStatus();
+});
+
+/* Codex */
+const codexList = $('#codex-list');
+async function refreshCodex(){
+  const rows = await DB.all('codex');
+  codexList.innerHTML = rows.length? rows.sort((a,b)=>b.ts-a.ts).map(r=>`<div class="card"><b>${r.title}</b><br>${r.body}<br><small>${new Date(r.ts).toLocaleString()}</small></div>`).join('') : '<em>No entries yet. Dissolve a knot to unlock.</em>';
+}
+$('#btn-codex-export').onclick = async ()=>{
+  const rows = await DB.all('codex');
+  const blob = new Blob([JSON.stringify(rows,null,2)],{type:'application/json'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='magic-codex.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+$('#btn-codex-clear').onclick = async ()=>{ await DB.clear('codex'); refreshCodex(); };
+refreshCodex();
+
+/* Forge */
+const forge = $('#forge'), parts = $('#parts');
+const C = { primary: $('#c1').value, secondary: $('#c2').value };
+function recolor(){
+  $('#g1 stop[offset="0"]').setAttribute('stop-color', C.primary);
+  $('#g1 stop[offset="1"]').setAttribute('stop-color', C.secondary);
+}
+$('#c1').oninput = e=>{ C.primary=e.target.value; recolor(); };
+$('#c2').oninput = e=>{ C.secondary=e.target.value; recolor(); };
+$('#btn-forge').onclick = ()=> forge.classList.toggle('open');
+function addHelm(){ const g=NS('g'); g.innerHTML=`<g filter="url(#glow)"><path d="M128 36c52 0 82 24 82 58 0 24-11 47-30 64H76C57 141 46 118 46 94c0-34 30-58 82-58z" fill="url(#g1)" opacity=".9"/><circle cx="128" cy="100" r="14" fill="#07101c"/></g>`; parts.appendChild(g); }
+function addCape(){ const g=NS('g'); g.innerHTML=`<path d="M48 96c18 22 42 40 80 40s62-18 80-40l-18 110H66L48 96z" fill="url(#g1)" opacity=".4"/>`; parts.appendChild(g); }
+function addWand(){ const g=NS('g'); g.innerHTML=`<g filter="url(#glow)"><rect x="160" y="64" width="6" height="120" rx="3" fill="url(#g1)"/><circle cx="163" cy="60" r="10" fill="url(#g1)"/></g>`; parts.appendChild(g); }
+function NS(tag){ return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+$('#btn-add-helm').onclick=addHelm; $('#btn-add-cape').onclick=addCape; $('#btn-add-wand').onclick=addWand;
+$('#btn-export-svg').onclick = ()=>{
+  const svg = $('#forge-svg').outerHTML.replace('<defs>','<defs><!-- Magic Forge: Foster + Navi -->');
+  const blob = new Blob([svg],{type:'image/svg+xml'}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='avatar-magic.svg'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+
+/* Self-hash provenance */
+async function sha256Hex(str){ const enc=new TextEncoder().encode(str); const buf=await crypto.subtle.digest('SHA-256',enc); return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
+(async()=>{ await new Promise(r=>setTimeout(r,50)); app.hash=await sha256Hex(document.body.innerHTML); HUD.refresh(); })();
+
+/* Inline PWA (cache this page for offline reload) */
+(async function pwa(){
+  function icon(size){ const c=document.createElement('canvas'); c.width=c.height=size; const x=c.getContext('2d'); x.fillStyle='#0b1324'; x.fillRect(0,0,size,size); x.fillStyle='#caa7ff'; x.beginPath(); x.arc(size/2,size/2,size*0.34,0,Math.PI*2); x.fill(); return new Promise(r=>c.toBlob(b=>r(URL.createObjectURL(b)),'image/png')); }
+  const icon192=await icon(192), icon512=await icon(512);
+  const manifest = { name:"Reframer • Magic", short_name:"Magic", start_url:".", display:"standalone", background_color:"#070a12", theme_color:"#0b0f1a", icons:[{src:icon192,sizes:"192x192",type:"image/png"},{src:icon512,sizes:"512x512",type:"image/png"}] };
+  const manURL = URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:'application/manifest+json'}));
+  const link=document.createElement('link'); link.rel='manifest'; link.href=manURL; document.head.appendChild(link);
+
+  const swCode = `
+    const CACHE='magic-cache-v1';
+    self.addEventListener('install',e=>{ e.waitUntil((async()=>{ const c=await caches.open(CACHE); await c.addAll([self.registration.scope]); })()); self.skipWaiting(); });
+    self.addEventListener('activate',e=>{ e.waitUntil(self.clients.claim()); });
+    self.addEventListener('fetch',e=>{ const r=e.request; e.respondWith((async()=>{ try{ return await fetch(r);}catch(_){ const c=await caches.open(CACHE); const m=await c.match(r); if(m) return m; return new Response('offline',{status:503}); } })()); });
+  `;
+  const swURL = URL.createObjectURL(new Blob([swCode],{type:'text/javascript'}));
+  if('serviceWorker' in navigator){
+    try{
+      app.swReg = await navigator.serviceWorker.register(swURL,{scope:'./'});
+      if('caches' in window){ const c=await caches.open('magic-cache-v1'); await c.add(location.href); }
+    }catch(e){ console.warn('SW failed',e); }
+  }
+  window.addEventListener('beforeinstallprompt',(e)=>{ e.preventDefault(); app.installDeferred=e; $('#btn-install').disabled=false; });
+  $('#btn-install').onclick=()=>{ if(app.installDeferred){ app.installDeferred.prompt(); app.installDeferred=null; } };
+})();
+
+/* Verify + New */
+$('#btn-proof').onclick = async ()=>{
+  HUD.show('verifying…'); const re = await sha256Hex(document.body.innerHTML);
+  setTimeout(()=>{ HUD.hide(); alert(re===app.hash?('✅ Self-hash matches: '+app.hash.slice(0,16)+'…') : '⚠️ Hash mismatch.'); }, 280);
+};
+$('#btn-new').onclick = ()=>{
+  localStorage.setItem('reframes','0'); app.reframes=0; localStorage.setItem('bossIQ','1.0'); app.bossIQ=1.0; HUD.refresh();
+  DB.clear('dojo').then(()=>refreshDojoLog()); DB.clear('codex').then(()=>refreshCodex());
+  alert('New run started. Local logs cleared.');
+};
+
+/* Keyboard niceties */
+addEventListener('keydown',e=>{ if(e.key==='Escape') HUD.hide(); });
+
+HUD.refresh();
+</script>
+<noscript>
+  <div style="position:fixed;inset:auto 0 0 0;background:#1b0f2a;color:#e6dfff;
+              padding:.75rem 1rem;border-top:1px solid rgba(143,122,214,.45);
+              font:500 14px/1.4 system-ui,Segoe UI,Inter,Roboto,sans-serif;z-index:10">
+    ⚠️ JavaScript is disabled. Activate it to train in the Magic Domain and enable offline play.
+  </div>
+</noscript>
+
+<footer aria-label="Magic domain footer"
+        style="position:fixed;left:0;right:0;bottom:0;z-index:1;pointer-events:none">
+  <div style="max-width:1200px;margin:0 auto;padding:.6rem 1rem;
+              display:flex;gap:.8rem;align-items:center;justify-content:space-between;
+              color:#bfaeff;font:500 12px/1.4 system-ui,Segoe UI,Inter,Roboto,sans-serif;
+              background:linear-gradient(0deg,rgba(20,12,44,.65),rgba(20,12,44,0));
+              border-top:1px solid rgba(143,122,214,.45);pointer-events:auto">
+    <span>🔮 Magic domain active • IndexedDB autosave enabled</span>
+    <span>Shortcuts → <kbd>Esc</kbd> hide loader · Tabs switch scenes</span>
+  </div>
+</footer>
+
+</body>
+</html>
